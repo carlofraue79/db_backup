@@ -30,15 +30,15 @@
 class db_backup{
 		private $exported_database;
 		
-		public function backup(){
+		public function backup($conn){
 			/*-------------------------------------*/
 			//------Creating Table SQL start-------//
 			/*-------------------------------------*/
 
 			$table_sql = array();
-			foreach ($this->tables() as $key => $table) {
-				$tbl_query=mysql_query("SHOW CREATE TABLE ".$table);
-				$row2 = mysql_fetch_row($tbl_query);
+			foreach ($this->tables($conn) as $key => $table) {
+				$tbl_query=mysqli_query($conn,"SHOW CREATE TABLE ".$table);
+				$row2 = mysqli_fetch_row($tbl_query);
 				$table_sql[]=$row2[1];
 			}
 			
@@ -52,20 +52,20 @@ class db_backup{
 			//------Inserting Data SQL Start-------//
 			/*-------------------------------------*/
 			$all_table_data=array();
-			foreach ($this->tables() as $key => $table) {
-				$show_field=$this->view_fields($table);
+			foreach ($this->tables($conn) as $key => $table) {
+				$show_field=$this->view_fields($conn,$table);
 				$solid_field_name=implode(", ",$show_field);
 				$create_field_sql="INSERT INTO `$table` ( ".$solid_field_name.") VALUES \n";
 
 				//Start checking data available
-				mysql_query("SET character_set_results = 'utf8', character_set_client = 'utf8', character_set_connection = 'utf8', character_set_database = 'utf8', character_set_server = 'utf8'");
-				$table_data= mysql_query("SELECT*FROM ".$table);
+				mysqli_query($conn,"SET character_set_results = 'utf8', character_set_client = 'utf8', character_set_connection = 'utf8', character_set_database = 'utf8', character_set_server = 'utf8'");
+				$table_data= mysqli_query($conn,"SELECT*FROM ".$table);
 				if(!$table_data){
-					echo 'Could not run query: '. mysql_error();
+					echo 'Could not run query: '. mysqli_error($conn);
 				}
 				
-				if (mysql_num_rows($table_data) > 0) {
-					$data_viewig=$this->view_data($table);
+				if (mysqli_num_rows( $table_data) > 0) {
+					$data_viewig=$this->view_data($conn,$table);
 					$splice_data = array_chunk($data_viewig,50);
 					foreach($splice_data as $each_datas){
 						$solid_data_viewig=implode(", \n",$each_datas)."; ";
@@ -123,22 +123,22 @@ class db_backup{
 		}
 		
 		public function connect($server,$user,$pass,$db){
-			$conn=mysql_connect($server,$user,$pass);
-			$condb=mysql_select_db($db);
-			if(!$conn || !$condb){
-				echo mysql_error();
-			}else{
-				return true;
+			$conn=mysqli_connect($server,$user,$pass,$db);
+
+			if(!$conn){
+				echo mysqli_error($conn);
 			}
+				return $conn;
+
 		}
 	
-		public function tables(){
+		public function tables($conn){
 			/*-------------------------------------*/
 			//------Creating Table List start------//
 			/*-------------------------------------*/
-			$tb_name=mysql_query("SHOW TABLES");
+			$tb_name=mysqli_query($conn,"SHOW TABLES");
 			$tables=array();
-			while ($tb=mysql_fetch_row($tb_name)) {
+			while ($tb=mysqli_fetch_row($tb_name)) {
 				$tables[]=$tb[0] ;
 			}
 			/*-------------------------------------*/
@@ -147,15 +147,15 @@ class db_backup{
 			return $tables;
 		}
 		
-		public function view_fields($tablename){
+		public function view_fields($conn,$tablename){
 			$all_fields=array();
-			$fields = mysql_query("SHOW COLUMNS FROM ".$tablename);
+			$fields = mysqli_query($conn,"SHOW COLUMNS FROM ".$tablename);
 			if (!$fields) {
-			 echo 'Could not run query: ' . mysql_error();
+			 echo 'Could not run query: ' . mysqli_error($conn);
 			}
 			
-			if (mysql_num_rows($fields) > 0) {
-				while ($field = mysql_fetch_assoc($fields)) {
+			if (mysqli_num_rows($fields) > 0) {
+				while ($field = mysqli_fetch_assoc($fields)) {
 					$all_fields[]="`".$field["Field"]."`";
 				}
 			}
@@ -163,17 +163,17 @@ class db_backup{
 		}
 
 
-		public function view_data($tablename){
+		public function view_data($conn,$tablename){
 			$all_data=array();
-			$table_data=mysql_query("SELECT*FROM ".$tablename);
+			$table_data=mysqli_query($conn,"SELECT*FROM ".$tablename);
 			if(!$table_data){
-				echo 'Could not run query: '. mysql_error();
+				echo 'Could not run query: '. mysqli_error($conn);
 			}
 
-			if(mysql_num_rows($table_data)>0){
+			if(mysqli_num_rows($table_data)>0){
 
 				
-				while ($t_data=mysql_fetch_row($table_data)) {
+				while ($t_data=mysqli_fetch_row($table_data)) {
 
 					$per_data=array();
 					foreach ($t_data as $key => $tb_data) {
@@ -193,10 +193,10 @@ class db_backup{
 
 		//Export End here==================================================================
 		//Import Start here==================================================================
-		function db_import($file_path){
+		function db_import($conn,$file_path){
 			$tbl_query=null;
-			foreach ($this->tables() as $key => $table) {
-				$tbl_query=mysql_query("DROP TABLE IF EXISTS ".$table);
+			foreach ($this->tables($conn) as $key => $table) {
+				$tbl_query=mysqli_query($conn,"DROP TABLE IF EXISTS ".$table);
 			}
 		 
 			//---------------------------------------------------------------------------
@@ -218,7 +218,7 @@ class db_backup{
 				if (substr(trim($line), -1, 1) == ';')
 				{
 					// Perform the query
-					mysql_query($templine) or print('Error performing query \'<strong>' . $templine . '\': ' . mysql_error() . '<br /><br />');
+					mysqli_query($conn,$templine) or print('Error performing query \'<strong>' . $templine . '\': ' . mysqli_error($conn) . '<br /><br />');
 					// Reset temp variable to empty
 					$templine = '';
 				}
