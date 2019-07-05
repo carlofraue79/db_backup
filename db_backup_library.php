@@ -1,28 +1,28 @@
 <?php
 /*
-	-- Specification--
-	-- Class Name is: db_backup
-	-- Methods
-		-- connect(Server Name,User name,passwrd,Database) 
-			--Usages: If your project connected with database already
-					then you don't need to use this 'connect()' Method
-			--Parameters
-				1st: Server Name
-				2nd: Username
-				3rd: Password
-				4th: Database Name
-		-- tables() It will Return an array with all tables name in the database
-		-- backup() It will Initialize The Backup
-		-- download() It will download The Backup file in sql
-			--Parameters
-				1st: If you want to give a custom name of backup use it Default is 'backup'
-		-- save() If you want to save the backup file into a server directory you can use it
-			--parameters
-				1st: Path URL
-				2nd: file Name Default Name is backup_yyy-mm-dd
-		--db_import(source)
-			Usage: If you want to Import Database from SQL File Use this method
-			--Parameters			1st: Source/Path of SQL file
+    -- Specification--
+    -- Class Name is: db_backup
+    -- Methods
+        -- connect(Server Name,User name,passwrd,Database)
+            --Usages: If your project connected with database already
+                    then you don't need to use this 'connect()' Method
+            --Parameters
+                1st: Server Name
+                2nd: Username
+                3rd: Password
+                4th: Database Name
+        -- tables() It will Return an array with all tables name in the database
+        -- backup() It will Initialize The Backup
+        -- download() It will download The Backup file in sql
+            --Parameters
+                1st: If you want to give a custom name of backup use it Default is 'backup'
+        -- save() If you want to save the backup file into a server directory you can use it
+            --parameters
+                1st: Path URL
+                2nd: file Name Default Name is backup_yyy-mm-dd
+        --db_import(source)
+            Usage: If you want to Import Database from SQL File Use this method
+            --Parameters			1st: Source/Path of SQL file
 
 */
 
@@ -83,13 +83,10 @@ class db_backup
                     $solid_data_viewig = implode(", \n", $each_datas) . "; ";
                     $all_table_data[] = $create_field_sql . $solid_data_viewig;
                 }
-
             } else {
                 $all_table_data[] = null;
             }
             //End checking data available
-
-
         }
         $entiar_table_data = implode(" \n\n\n", $all_table_data);
         /*-------------------------------------*/
@@ -114,18 +111,26 @@ class db_backup
         foreach ($first_row as $name) {
             $values_array[] = ':' . trim($name);
         }
-        $columns = implode(', ', fgetcsv($input2, 1024, ';'));
-        $values = implode(', ', $values_array);
-
+        $tmp_columns = implode(',', fgetcsv($input2, 1024, ';'));
+        $replace="`,`";
+        $columns = substr($tmp_columns, 0, strrpos($tmp_columns, ','));
+        $tmp = '`'.preg_replace("/[',']/m", $replace, $columns).'`';
+       
         $count = 0;
         while ($row = fgetcsv($input, 1024, ';')) {
-            $sql = "INSERT INTO $database_table($columns) VALUES($values)";
-            $query = $conn->prepare($sql);
+            $sql = "INSERT INTO $database_table($tmp) VALUES (";
+           
+            // $query = $conn->prepare($sql);
             for ($i = 0; $i < count($row); $i++) {
-
-                $query->bindParam($values_array[$i], $row[$i]);
+                $sql.= "'".trim($row[$i])."',";
+                // '`'.$row[$i].'`,';
+                //$query->bindParam($values_array[$i], $row[$i]);
             }
-            $query->execute();
+            $tmp_sql=substr($sql, 0, strrpos($sql, ",''"));
+            $tmp_sql.=')';
+            echo $tmp_sql.PHP_EOL;
+            mysqli_query($conn, $tmp_sql) or die(mysqli_error($conn));
+            //$query->execute();
             $count++;
         }
         return $count;
@@ -172,7 +177,6 @@ class db_backup
             echo mysqli_error($conn);
         }
         return $conn;
-
     }
 
     public function tables($conn)
@@ -207,7 +211,44 @@ class db_backup
         return $all_fields;
     }
 
-
+    public function getItem($conn, $sql, $table, $saveonFile=false)
+    {
+        $return ='';
+        if ($result = mysqli_query($conn, $sql)) {
+            $num_fields = mysqli_num_fields($result);
+            if ($num_fields > 0) {
+                echo 'Colonne sul server remoto esistenti '.'\n';
+            }
+            for ($i = 0; $i < $num_fields; $i++) {
+                while ($row = mysqli_fetch_row($result)) {
+                    $return.= 'INSERT INTO '.$table.' VALUES(';
+                    for ($j=0; $j < $num_fields; $j++) {
+                        $row[$j] = addslashes($row[$j]);
+                        //$row[$j] = preg_replace("\n","\\n",$row[$j]);
+                        if (isset($row[$j])) {
+                            $return.= '"'.$row[$j].'"' ;
+                        } else {
+                            $return.= '""';
+                        }
+                        if ($j < ($num_fields-1)) {
+                            $return.= ',';
+                        }
+                    }
+                    $return.= ");\n";
+                }
+            }
+            $return.="\n\n\n";
+        }
+       
+        $filename=$table.'.sql';
+        if ($saveonFile) {
+            $handle = fopen($filename, 'w');
+            fwrite($handle, $return);
+            fclose($handle);
+        }
+        
+        return $return;
+    }
     public function view_data($conn, $tablename)
     {
         $all_data = array();
@@ -217,10 +258,7 @@ class db_backup
         }
 
         if (mysqli_num_rows($table_data) > 0) {
-
-
             while ($t_data = mysqli_fetch_row($table_data)) {
-
                 $per_data = array();
                 foreach ($t_data as $key => $tb_data) {
                     $per_data[] = "'" . str_replace("'", "\'", $tb_data) . "'";
@@ -239,7 +277,7 @@ class db_backup
 
     //Export End here==================================================================
     //Import Start here==================================================================
-    function db_import($conn, $file_path)
+    public function db_import($conn, $file_path)
     {
         $tbl_query = null;
         foreach ($this->tables($conn) as $key => $table) {
@@ -255,8 +293,9 @@ class db_backup
         // Loop through each line
         foreach ($lines as $line) {
             // Skip it if it's a comment
-            if (substr($line, 0, 2) == '--' || $line == '')
+            if (substr($line, 0, 2) == '--' || $line == '') {
                 continue;
+            }
 
             // Add this line to the current segment
             $templine .= $line;
